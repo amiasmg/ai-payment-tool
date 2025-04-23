@@ -1,0 +1,4 @@
+paymanai
+python-dotenv
+openai
+requests

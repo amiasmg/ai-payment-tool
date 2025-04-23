@@ -1,0 +1,23 @@
+{
+  "name": "ai-payment-tool",
+  "settings": {
+    "python.analysis.typeCheckingMode": "basic",
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "editor.rulers": [88],
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true,
+      "**/venv": true,
+      "**/*.pyc": true
+    },
+    "search.exclude": {
+      "**/venv": true,
+      "**/__pycache__": true
+    }
+  },
+  "recommended_extensions": [
+    "ms-python.python",
+    "ms-python.vscode-pylance"
+  ]
+} 
