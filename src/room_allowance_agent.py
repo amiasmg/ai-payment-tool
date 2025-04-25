@@ -99,6 +99,8 @@ class RoomAllowanceAgent:
                 "max_tokens": 500
             }
             
+            #print("\nSending request to OpenAI API...")
+            
             # Make the API request
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -112,39 +114,40 @@ class RoomAllowanceAgent:
             
             # Parse the response
             result = response.json()
-            #print(f"Raw API Response: {json.dumps(result, indent=2)}")
+            #print(f"\nRaw API Response: {json.dumps(result, indent=2)}")
             
             if 'choices' not in result or not result['choices']:
                 raise Exception("No choices in API response")
                 
             content = result['choices'][0]['message']['content']
-            #print(f"Raw Content: {content}")
+            #print(f"\nRaw Content: {content}")
             
             # Clean the content before parsing JSON
             cleaned_content = self.clean_json_response(content)
-            #print(f"Cleaned Content: {cleaned_content}")
+            #print(f"\nCleaned Content: {cleaned_content}")
             
             try:
                 analysis = json.loads(cleaned_content)
+                #print(f"\nParsed Analysis: {json.dumps(analysis, indent=2)}")
             except json.JSONDecodeError as e:
-                print(f"Failed to parse JSON from content: {cleaned_content}")
+                #print(f"Failed to parse JSON from content: {cleaned_content}")
                 raise Exception(f"Invalid JSON response: {str(e)}")
             
             if not isinstance(analysis, dict) or 'score' not in analysis:
                 raise Exception("Invalid analysis format: missing required fields")
             
-            print("\nRoom Analysis:")
-            print(f"Score: {analysis['score']:.2f}")
-            print(f"Explanation: {analysis['explanation']}")
-            print("\nSpecific Observations:")
-            for obs in analysis['specific_observations']:
-                print(f"- {obs}")
+            #print("\nRoom Analysis:")
+            #print(f"Score: {analysis['score']:.2f}")
+            #print(f"Explanation: {analysis['explanation']}")
+            #print("\nSpecific Observations:")
+            #for obs in analysis['specific_observations']:
+            #    print(f"- {obs}")
             
-            return analysis['score']
+            return analysis
             
         except Exception as e:
-            print(f"Error analyzing room: {str(e)}")
-            return 0.0
+            #print(f"Error analyzing room: {str(e)}")
+            return None
 
     def calculate_allowance(self, cleanliness_score):
         """
@@ -162,12 +165,12 @@ class RoomAllowanceAgent:
         """
         try:
             # Search for existing payee
-            print(f"\nSearching for payee with name: {child_name}")
+            #print(f"\nSearching for payee with name: {child_name}")
             payees = self.payman.payments.search_payees(
                 name=child_name
             )
             
-            print(f"Search results: {payees}")
+            #print(f"Search results: {payees}")
             
             # Parse the search results if it's a string
             if isinstance(payees, str):
@@ -189,10 +192,10 @@ class RoomAllowanceAgent:
             # Get the first payee from the list
             first_payee = payees[0]
             if isinstance(first_payee, dict) and 'id' in first_payee:
-                print(f"Found existing payee with ID: {first_payee['id']}")
+                #print(f"Found existing payee with ID: {first_payee['id']}")
                 return first_payee
             else:
-                print(f"Invalid payee format: {first_payee}, creating new payee")
+                #print(f"Invalid payee format: {first_payee}, creating new payee")
                 return self.create_new_payee(child_name)
             
         except Exception as e:
@@ -203,7 +206,7 @@ class RoomAllowanceAgent:
         """
         Create a new payee
         """
-        print(f"Creating new payee for {child_name}")
+        #print(f"Creating new payee for {child_name}")
         new_payee = self.payman.payments.create_payee(
             type="TEST_RAILS",
             name=child_name,
@@ -218,16 +221,19 @@ class RoomAllowanceAgent:
         """
         try:
             # Analyze room cleanliness
-            cleanliness_score = self.analyze_room_cleanliness(image_path)
-            print(f"\nCleanliness score: {cleanliness_score:.2f}")
+            analysis = self.analyze_room_cleanliness(image_path)
+            if not analysis:
+                return None
+                
+            #print(f"\nCleanliness score: {analysis['score']:.2f}")
             
             # Calculate allowance
-            allowance_amount = self.calculate_allowance(cleanliness_score)
-            print(f"Allowance amount: ${allowance_amount:.2f}")
+            allowance_amount = self.calculate_allowance(analysis['score'])
+            #print(f"Allowance amount: ${allowance_amount:.2f}")
             
             # Get or create payee
             payee = self.get_or_create_payee(child_name)
-            print(f"Using payee: {payee}")
+            #print(f"Using payee: {payee}")
             
             # Get payee ID based on the type of payee object
             if isinstance(payee, dict):
@@ -239,17 +245,19 @@ class RoomAllowanceAgent:
             payment = self.payman.payments.send_payment(
                 amount_decimal=allowance_amount,
                 payee_id=payee_id,
-                memo=f"Allowance for {child_name} - Room Cleanliness Score: {cleanliness_score:.2f}"
+                memo=f"Allowance for {child_name} - Room Cleanliness Score: {analysis['score']:.2f}"
             )
             
             return {
-                "cleanliness_score": cleanliness_score,
+                "cleanliness_score": analysis['score'],
                 "allowance_amount": allowance_amount,
-                "payment": payment
+                "payment": payment,
+                "explanation": analysis['explanation'],
+                "specific_observations": analysis['specific_observations']
             }
             
         except Exception as e:
-            print(f"Error processing room and payment: {str(e)}")
+            #print(f"Error processing room and payment: {str(e)}")
             return None
 
 def main():
@@ -264,13 +272,7 @@ def main():
     child_name = "Susie"
     
     result = agent.process_room_and_pay(image_path, child_name)
-    print(f"Result: {result}")
-
-    #if result:
-     #   print("\nResults:")
-      #  print(f"Cleanliness Score: {result['cleanliness_score']:.2f}")
-       # print(f"Allowance Amount: ${result['allowance_amount']:.2f}")
-        #print(f"Payment Status: {result['payment']['status']}")
+    #print(f"Result: {result}")
 
 if __name__ == "__main__":
     main() 

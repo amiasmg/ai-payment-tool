@@ -1,44 +1,95 @@
-from paymanai import Paymanai
+from flask import Flask, render_template, request, redirect, url_for, flash
 import os
+from werkzeug.utils import secure_filename
+from room_allowance_agent import RoomAllowanceAgent
 from dotenv import load_dotenv
-import uuid
 
 # Load environment variables
 load_dotenv()
 
-def main():
+# Create Flask app with the correct template directory
+template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
+app = Flask(__name__, template_folder=template_dir)
+app.secret_key = os.urandom(24)
+
+# Configure upload folder
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Initialize the RoomAllowanceAgent
+agent = RoomAllowanceAgent(os.getenv("PAYMAN_API_SECRET"))
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        if 'room_image' not in request.files:
+            return render_template('index.html', error='No image uploaded')
+        
+        file = request.files['room_image']
+        if file.filename == '':
+            return render_template('index.html', error='No image selected')
+        
+        if file:
+            # Save the uploaded file
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            try:
+                # Get child's name
+                child_name = request.form.get('child_name')
+                
+                # Process the room and get results
+                result = agent.process_room_and_pay(filepath, child_name)
+                
+                if result:
+                    # Add child name to result for display
+                    result['child_name'] = child_name
+                    return render_template('index.html', result=result)
+                else:
+                    return render_template('index.html', error='Failed to process room')
+                    
+            except Exception as e:
+                return render_template('index.html', error=str(e))
+            finally:
+                # Clean up the uploaded file
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+    
+    return render_template('index.html')
+
+@app.route('/process_payment', methods=['POST'])
+def process_payment():
     try:
-        # Initialize Paymanai client
-        payman = Paymanai(
-            x_payman_api_secret=os.getenv("PAYMAN_API_SECRET")
+        child_name = request.form.get('child_name')
+        amount = float(request.form.get('amount'))
+        
+        # Get or create payee
+        payee = agent.get_or_create_payee(child_name)
+        
+        # Process payment
+        payment = agent.payman.payments.send_payment(
+            amount_decimal=amount,
+            payee_id=payee["id"],
+            memo=f"Allowance for {child_name}"
         )
-
-        # Check available balance
-        balance = payman.balances.get_spendable_balance("TSD")
-        print(f"Available balance: ${balance:.2f}")
-
-        # Generate a unique identifier for the test payee
-        unique_id = str(uuid.uuid4())[:8]
-
-        # Create a payee with unique details
-        payee = payman.payments.create_payee(
-            type="TEST_RAILS",
-            name=f"Test Account {unique_id}",
-            tags=["test", "sandbox", f"test_{unique_id}"]
-        )
-
-        # Send payment
-        payment = payman.payments.send_payment(
-            amount_decimal=20.00,
-            payee_id=payee.id,
-            memo="Test payment"
-        )
-
-        print("Payee created:", payee)
-        print("Payment created:", payment)
-
+        
+        # Redirect to success page
+        return render_template('success.html')
+        
     except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        # Redirect to failure page with error message
+        return render_template('failure.html', error_message=str(e))
 
-if __name__ == "__main__":
-    main()
+@app.route('/preview/success')
+def preview_success():
+    return render_template('success.html')
+
+@app.route('/preview/failure')
+def preview_failure():
+    return render_template('failure.html', error_message="This is a sample error message")
+
+if __name__ == '__main__':
+    app.run(debug=True)

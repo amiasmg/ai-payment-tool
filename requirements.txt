@@ -2,3 +2,5 @@ paymanai
 python-dotenv
 openai
 requests
+flask
+werkzeug
